@@ -3093,6 +3093,82 @@ describe('Rule Engine — individual rules', () => {
     expect(result.warnings.some(w => w.includes('Review Application') && w.includes('Objekt+Verb'))).toBe(false);
   });
 
+  test('M01: no locale defined → default German+English union (unchanged contract)', () => {
+    // Pins the default-locale contract: with no config.locale, behavior is exactly
+    // the German-suffix-last OR English-set-first union, regardless of profile shape.
+    const lc = proc([
+      { id: 's', type: 'startEvent' },
+      { id: 't1', type: 'userTask', name: 'Antrag prüfen' },
+      { id: 'e', type: 'endEvent' },
+    ], [
+      { id: 'f1', source: 's', target: 't1' },
+      { id: 'f2', source: 't1', target: 'e' },
+    ]);
+    expect(runRules(lc).warnings.some(w => w.includes('Antrag prüfen'))).toBe(false);
+    expect(runRules(lc, {}).warnings.some(w => w.includes('Antrag prüfen'))).toBe(false);
+  });
+
+  test('M01: Portuguese verb-first names (locale: pt) → no WARNING', () => {
+    for (const name of ['Preparar documentos', 'Enviar notificação', 'Validar cadastro']) {
+      const lc = proc([
+        { id: 's', type: 'startEvent' },
+        { id: 't1', type: 'userTask', name },
+        { id: 'e', type: 'endEvent' },
+      ], [
+        { id: 'f1', source: 's', target: 't1' },
+        { id: 'f2', source: 't1', target: 'e' },
+      ]);
+      const result = runRules(lc, { locale: 'pt' });
+      expect(result.warnings.some(w => w.includes(name) && w.includes('Objekt+Verb'))).toBe(false);
+    }
+  });
+
+  test('M01: Portuguese single-word / noun-only names (locale: pt) → WARNING', () => {
+    for (const name of ['Cadastro', 'Documento de aprovação']) {
+      const lc = proc([
+        { id: 's', type: 'startEvent' },
+        { id: 't1', type: 'userTask', name },
+        { id: 'e', type: 'endEvent' },
+      ], [
+        { id: 'f1', source: 's', target: 't1' },
+        { id: 'f2', source: 't1', target: 'e' },
+      ]);
+      const result = runRules(lc, { locale: 'pt' });
+      expect(result.warnings.some(w => w.includes(name) && w.includes('Objekt+Verb'))).toBe(true);
+    }
+  });
+
+  test('M01: Portuguese false-positive-risk noun ending in -ar (locale: pt) → WARNING', () => {
+    // Pins the curated-Set design decision over a suffix heuristic: "lugar" ends in
+    // "-ar" like a Portuguese infinitive would, but it is an ordinary noun, not a verb.
+    // A suffix-based approach (analogous to German) would wrongly accept this.
+    const lc = proc([
+      { id: 's', type: 'startEvent' },
+      { id: 't1', type: 'userTask', name: 'Lugar de encontro' },
+      { id: 'e', type: 'endEvent' },
+    ], [
+      { id: 'f1', source: 's', target: 't1' },
+      { id: 'f2', source: 't1', target: 'e' },
+    ]);
+    const result = runRules(lc, { locale: 'pt' });
+    expect(result.warnings.some(w => w.includes('Lugar de encontro') && w.includes('Objekt+Verb'))).toBe(true);
+  });
+
+  test('M01: explicit locale replaces, not adds to, the default union', () => {
+    // A valid German name must WARN once locale: 'pt' is explicitly set — an explicit
+    // locale states the process's language, so only that locale's rule applies.
+    const lc = proc([
+      { id: 's', type: 'startEvent' },
+      { id: 't1', type: 'userTask', name: 'Antrag prüfen' },
+      { id: 'e', type: 'endEvent' },
+    ], [
+      { id: 'f1', source: 's', target: 't1' },
+      { id: 'f2', source: 't1', target: 'e' },
+    ]);
+    const result = runRules(lc, { locale: 'pt' });
+    expect(result.warnings.some(w => w.includes('Antrag prüfen') && w.includes('Objekt+Verb'))).toBe(true);
+  });
+
   test('M02: XOR gateway without question mark → WARNING', () => {
     const lc = proc([
       { id: 's', type: 'startEvent' },

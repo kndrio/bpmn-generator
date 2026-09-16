@@ -853,6 +853,15 @@ const SOUNDNESS_RULES = [
 // deutsche BA-Konvention setzt das Verb ans Ende im Infinitiv ("Antrag prüfen");
 // zusätzlich akzeptieren wir das englische Verb-first-Muster ("Review application")
 // über eine kleine kuratierte Liste, um False-Positives zu vermeiden.
+//
+// Locale: `config.locale` (the rule-profile object passed as check's 3rd arg, same
+// object P01 already reads `config.overrides.P01.threshold` from) selects exactly one
+// locale's rule and REPLACES the default union — an explicit locale means the caller
+// has stated the process's language, so applying an unrelated language's heuristic on
+// top would only add false negatives (e.g. a Portuguese noun coincidentally matching
+// the German suffix). No `config.locale` → the union below (German suffix-last OR
+// English set-first), unchanged since this rule's introduction, for zero compatibility
+// impact on every existing caller.
 const M01_GERMAN_VERB_SUFFIX = /(en|eln|ern|ieren)$/i;
 const M01_ENGLISH_VERBS = new Set([
   'review', 'approve', 'send', 'receive', 'check', 'create', 'update', 'delete',
@@ -861,9 +870,28 @@ const M01_ENGLISH_VERBS = new Set([
   'escalate', 'sign', 'evaluate', 'calculate', 'generate', 'publish', 'cancel',
   'release', 'collect', 'enter', 'add', 'remove', 'store', 'fetch', 'handle',
 ]);
+// Portuguese infinitives end in -ar/-er/-ir, endings shared with many ordinary nouns
+// ("lugar", "celular", "prazer", "poder") far more densely than German's suffix set
+// collides with German nouns — a suffix heuristic would be materially noisier for
+// Portuguese, so (like English) it gets a curated verb-first Set instead.
+const M01_PORTUGUESE_VERBS = new Set([
+  'preparar', 'enviar', 'receber', 'verificar', 'validar', 'aprovar', 'rejeitar',
+  'criar', 'atualizar', 'excluir', 'arquivar', 'atribuir', 'confirmar', 'registrar',
+  'emitir', 'encerrar', 'abrir', 'solicitar', 'encaminhar', 'escalar', 'assinar',
+  'avaliar', 'calcular', 'gerar', 'publicar', 'cancelar', 'liberar', 'coletar',
+  'cadastrar', 'notificar',
+]);
+
+const M01_LOCALES = {
+  de: { verbPosition: 'last', suffixRegex: M01_GERMAN_VERB_SUFFIX, minLen: 4 },
+  en: { verbPosition: 'first', verbSet: M01_ENGLISH_VERBS },
+  pt: { verbPosition: 'first', verbSet: M01_PORTUGUESE_VERBS },
+};
 
 // Returns true when a task label does NOT look like Objekt+Verb / Verb+Object.
-function violatesVerbObject(name) {
+// `locale`: one of M01_LOCALES' keys to apply exactly one language's rule, or
+// undefined/unknown to apply the default German+English union (see header comment).
+function violatesVerbObject(name, locale) {
   const cleaned = String(name)
     .replace(/\([^)]*\)/g, ' ')   // (meta) entfernen, z.B. "(KVNeo)"
     .replace(/\[[^\]]*\]/g, ' ')  // [meta] entfernen
@@ -873,9 +901,13 @@ function violatesVerbObject(name) {
   const tokens = cleaned ? cleaned.split(' ') : [];
   if (tokens.length < 2) return true;                       // Einzelwort → Verstoß
   const first = tokens[0].toLowerCase().replace(/[^a-zäöüß]/gi, '');
-  if (M01_ENGLISH_VERBS.has(first)) return false;           // englisch: Verb zuerst
   const last = tokens[tokens.length - 1];
-  if (last.length >= 4 && M01_GERMAN_VERB_SUFFIX.test(last)) return false; // deutsch: Infinitiv am Ende
+
+  const locales = M01_LOCALES[locale] ? [M01_LOCALES[locale]] : [M01_LOCALES.de, M01_LOCALES.en];
+  for (const rule of locales) {
+    if (rule.verbPosition === 'first' && rule.verbSet.has(first)) return false;
+    if (rule.verbPosition === 'last' && last.length >= rule.minLen && rule.suffixRegex.test(last)) return false;
+  }
   return true;
 }
 
@@ -883,14 +915,15 @@ const STYLE_RULES = [
   {
     id: 'M01', layer: 'style', defaultSeverity: 'WARNING',
     description: 'Activity-Labels: Objekt + Verb (Verb im Infinitiv)',
-    ref: { silver: 'Ch.3', pmg: 'G5' },
+    ref: { silver: 'Ch.3', pmg: 'G6' },
     scope: 'process',
-    check: (proc) => {
+    check: (proc, lc, config) => {
       const taskTypes = ['task', 'userTask', 'serviceTask', 'scriptTask', 'manualTask',
                          'businessRuleTask', 'sendTask', 'receiveTask'];
+      const locale = config?.locale;
       const msgs = [];
       for (const n of (proc.nodes || [])) {
-        if (taskTypes.includes(n.type) && n.name && violatesVerbObject(n.name))
+        if (taskTypes.includes(n.type) && n.name && violatesVerbObject(n.name, locale))
           msgs.push(`Task "${n.name}" folgt nicht der Objekt+Verb-Konvention (z.B. "Antrag prüfen"). Heuristik — exakte Wortartprüfung: M05/M06.`);
       }
       return msgs.length === 0 ? { pass: true } : { pass: false, messages: msgs };
