@@ -257,12 +257,12 @@ Modellierungsrichtlinien. Warnt, blockiert nicht.
 
 | ID | Regel | Referenz | Status |
 |----|-------|----------|--------|
-| M01 | Tasks benennen mit Objekt+Verb-Pattern (Verb im Infinitiv) | 7PMG G7, Silver Ch.3 | implementiert (Heuristik) |
+| M01 | Tasks benennen mit Objekt+Verb-Pattern (Verb im Infinitiv) | 7PMG G6, Silver Ch.3 | implementiert (Heuristik) |
 | M02 | Divergierende XOR-Gateways: Label als Frage formulieren | Silver Ch.5, MG.org | implementiert |
 | M03 | Convergierende Gateways: kein Label an ausgehenden Kanten | Silver Ch.5 | implementiert |
 | M04 | Divergierende XOR-Gateways: Kanten muessen Labels haben | Silver Ch.5, OMG §10.5.1 | implementiert |
-| M05 | Prozessnamen mit Verb+Substantiv-Pattern | 7PMG G7 | Platzhalter |
-| M06 | Keine doppelten Knotennamen im selben Prozess | 7PMG G6 | Platzhalter |
+| M05 | Message-Flow-Labels: nur Substantive | — (POS-Tagger-Problem, siehe ROADMAP) | Platzhalter |
+| M06 | Event-Labels: Partizip/Zustand | — (POS-Tagger-Problem, siehe ROADMAP) | Platzhalter |
 | M07 | Vermeide OR-Gateways (inclusive) | Silver Ch.5, 7PMG G4 | implementiert |
 | M08 | Jeder XOR-Split hat einen Default-Flow | Silver Ch.5 | implementiert |
 | M09 | Lane-Node-Zuweisung: Format B (lane.nodeIds) ohne Format A (node.lane) | OMG §10.5 | implementiert |
@@ -389,25 +389,40 @@ Fuer regulierte Branchen: Style-Warnungen werden zu Errors.
 
 Aktivitaets-Labels sollen der Objekt+Verb-Konvention folgen (deutsche BA-Konvention: Verb am Ende im Infinitiv, z.B. "Antrag pruefen", "Zahlung anweisen"). Reine Substantive oder Substantivketten ohne Verb ("Pruefung", "Vorgang zur Klaerung") sind unklar und werden gewarnt.
 
-**Heuristik (bewusst konservativ):** M01 ist **kein** POS-Tagger. Die Pruefung nutzt:
+**Heuristik (bewusst konservativ):** M01 ist **kein** POS-Tagger. Ohne `locale` prueft sie die
+Vereinigung der folgenden zwei Regeln (unveraendert seit Einfuehrung, Standardverhalten fuer alle
+bestehenden Aufrufer):
 1. **< 2 Tokens** → Verstoss (Einzelwort wie "Pruefung").
-2. **Deutsch (primaer):** valide, wenn das letzte Token wie ein Infinitiv aussieht (Endung `-en`/`-eln`/`-ern`/`-ieren`, Laenge ≥ 4). Klammer-/Bracket-Meta `(…)`/`[…]` und Slashes werden vorher normalisiert ("erfassen/aendern" → beide Verben).
-3. **Englischer Escape-Hatch:** valide, wenn das erste Token in einer kleinen kuratierten Verbliste steht ("Review Application"), um False-Positives zu vermeiden.
+2. **Deutsch:** valide, wenn das letzte Token wie ein Infinitiv aussieht (Endung `-en`/`-eln`/`-ern`/`-ieren`, Laenge ≥ 4). Klammer-/Bracket-Meta `(…)`/`[…]` und Slashes werden vorher normalisiert ("erfassen/aendern" → beide Verben).
+3. **Englisch:** valide, wenn das erste Token in einer kleinen kuratierten Verbliste steht ("Review Application"), um False-Positives zu vermeiden.
 
-**Bewusste Grenzen:** Die Heuristik kann deutsche Plural-Substantive auf `-en` nicht sicher von Verben unterscheiden und deckt nur einen kleinen englischen Verbwortschatz ab. Sie ist deshalb WARNING, nie blockierend. Die exakte Wortartanalyse ist als **M05/M06** vorgesehen (Status: Platzhalter/OFF — POS-Tagger-Problem, siehe ROADMAP). M01 faengt die haeufigen, offensichtlichen Verstoesse ab.
+**Locale (i18n):** Ein `locale`-Wert im Regel-Profil (`config.locale`, 3. Argument von `check`,
+selbes Objekt wie bei P01s `config.overrides.P01.threshold`) waehlt genau eine Sprache aus und
+**ersetzt** die Standard-Vereinigung — ein explizit angegebenes `locale` bedeutet, dass der
+Aufrufer die Sprache des Prozesses kennt, daher wuerde eine zusaetzliche, unpassende
+Sprachheuristik nur False Negatives erzeugen. Unterstuetzt: `de` (wie oben), `en` (wie oben),
+`pt` (Portugiesisch, Verb-zuerst, kuratierte Verbliste analog Englisch — eine Suffix-Heuristik
+waere fuer Portugiesisch deutlich rauschanfaelliger, da `-ar`/`-er`/`-ir` weit haeufiger in
+gewoehnlichen Substantiven vorkommen als die deutschen Endungen). Kein `locale` → Standardverhalten
+(Punkt 1-3 oben), unveraendert.
+
+**Bewusste Grenzen:** Die Heuristik kann deutsche Plural-Substantive auf `-en` nicht sicher von Verben unterscheiden und deckt nur einen kleinen Verbwortschatz je Sprache ab. Sie ist deshalb WARNING, nie blockierend. Die exakte Wortartanalyse ist als **M05/M06** vorgesehen (Status: Platzhalter/OFF — POS-Tagger-Problem, siehe ROADMAP). M01 faengt die haeufigen, offensichtlichen Verstoesse ab.
 
 **Beispiele:**
 
-| Bewertung | Name |
-|-----------|------|
-| gut | `Antrag pruefen` |
-| gut | `Zahlung anweisen` |
-| gut | `Partnerdaten erfassen/aendern (KVNeo)` |
-| gut | `Review Application` (englischer Escape-Hatch) |
-| schlecht | `Pruefung` (Einzelwort) |
-| schlecht | `Vorgang zur Klaerung` (kein Verb) |
+| Bewertung | Name | Locale |
+|-----------|------|--------|
+| gut | `Antrag pruefen` | (keins) |
+| gut | `Zahlung anweisen` | (keins) |
+| gut | `Partnerdaten erfassen/aendern (KVNeo)` | (keins) |
+| gut | `Review Application` | (keins) |
+| gut | `Preparar documentos` | `pt` |
+| schlecht | `Pruefung` | (keins) |
+| schlecht | `Vorgang zur Klaerung` | (keins) |
+| schlecht | `Lugar de encontro` (Substantiv "Lugar", kein Verb) | `pt` |
+| schlecht | `Antrag pruefen` (deutsches Muster, aber `locale: pt` ersetzt statt ergaenzt) | `pt` |
 
-**Referenz:** 7PMG G7 (Mendling et al., 2010), Bruce Silver: BPMN Method & Style, Ch.3
+**Referenz:** 7PMG G6 (Mendling et al., 2010, Table 1: "use verb-object activity labels"), Bruce Silver: BPMN Method & Style, Ch.3
 
 ---
 
