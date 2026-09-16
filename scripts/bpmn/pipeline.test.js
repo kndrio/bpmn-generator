@@ -25,6 +25,7 @@ import {
 } from './pipeline.js';
 import { normalizeLaneAssignments, orderParticipantsByMessageFlow } from './topology.js';
 import { wrapText, wrapTextByPx } from '../shared/utils.js';
+import { SHAPE } from './constants.js';
 
 import { bpmnToLogicCore, bpmnToLogicCoreLegacy } from './import.js';
 import { moddleParse, moddleToLogicCore } from './moddle-import.js';
@@ -5100,6 +5101,79 @@ describe('geometry contract — every drawable has coordinates', () => {
     expect(r.bpmnXml).toContain('<bpmn:textAnnotation id="note"');
     expect(r.bpmnXml).toMatch(/bpmnElement="note">\s*<dc:Bounds/);
     expect(r.bpmnXml).toMatch(/bpmnElement="a1"[\s\S]*?<di:waypoint/);
+  });
+});
+
+// A long, unwrapped textAnnotation overlaps whatever sits below/beside it (the
+// bug item 5A fixes). Wrapping is computed once in coordinates.js's
+// placeArtifacts and stored as coordMap.coords[id].lines — svg.js reads it back
+// rather than re-wrapping, and bpmn-xml.js's DI passthrough needs no change at
+// all, since it already mirrors coordMap's w/h verbatim for every node type.
+describe('textAnnotation wrapping — box grows to fit, renderers agree', () => {
+  const annotationFixture = (name) => ({
+    pools: [{
+      id: 'P1', name: 'Pool', lanes: [{ id: 'L1', name: 'Lane' }],
+      nodes: [
+        { id: 's', type: 'startEvent', name: 'Start', lane: 'L1' },
+        { id: 't', type: 'userTask', name: 'Check', lane: 'L1' },
+        { id: 'e', type: 'endEvent', name: 'End', lane: 'L1' },
+        { id: 'note', type: 'textAnnotation', name, lane: 'L1' },
+      ],
+      edges: [
+        { id: 'f1', source: 's', target: 't' },
+        { id: 'f2', source: 't', target: 'e' },
+      ],
+    }],
+    associations: [{ id: 'a1', source: 'note', target: 't' }],
+  });
+
+  test('short text: single line, no height growth beyond the configured minimum', async () => {
+    const r = await runPipeline(loadFixture('all-element-classes.json'));
+    const c = r.coordMap.coords.note;
+    expect(c.lines).toEqual(['Four eyes']);
+    expect(c.h).toBe(SHAPE.textAnnotation.h);
+  });
+
+  test('long text with spaces: wraps at word boundaries, box grows, one <text> per line', async () => {
+    const longName = 'This annotation carries a long explanatory sentence that must wrap across several lines';
+    const r = await runPipeline(annotationFixture(longName));
+    const c = r.coordMap.coords.note;
+    const expectedLines = wrapTextByPx(longName, SHAPE.textAnnotation.maxTextWidthPx, 11);
+    expect(c.lines).toEqual(expectedLines);
+    expect(expectedLines.length).toBeGreaterThan(1);
+    expect(c.h).toBeGreaterThan(SHAPE.textAnnotation.h);
+    for (const line of expectedLines) expect(r.svg).toContain(`>${line}<`);
+  });
+
+  test('single long token: hyphen-broken, box width stays at the configured max', async () => {
+    const longToken = 'A'.repeat(60);
+    const r = await runPipeline(annotationFixture(longToken));
+    const c = r.coordMap.coords.note;
+    expect(c.w).toBe(SHAPE.textAnnotation.maxTextWidthPx);
+    expect(c.lines.length).toBeGreaterThan(1);
+    for (const line of c.lines) expect(line.length).toBeLessThanOrEqual(
+      Math.max(1, Math.floor(SHAPE.textAnnotation.maxTextWidthPx / (11 * 0.6)))
+    );
+  });
+
+  test('round-trip: the original unwrapped name survives import unchanged', async () => {
+    const longName = 'This annotation carries a long explanatory sentence that must wrap across several lines';
+    const r = await runPipeline(annotationFixture(longName));
+    const reimported = await bpmnToLogicCore(r.bpmnXml);
+    const reimNodes = reimported.pools ? reimported.pools[0].nodes : reimported.nodes;
+    const note = reimNodes.find(n => n.id === 'note');
+    expect(note.name).toBe(longName);
+  });
+
+  test('two renderers agree: DI height matches coordMap, SVG line count matches coordMap.lines', async () => {
+    const longName = 'This annotation carries a long explanatory sentence that must wrap across several lines';
+    const r = await runPipeline(annotationFixture(longName));
+    const c = r.coordMap.coords.note;
+    const boundsMatch = r.bpmnXml.match(/bpmnElement="note">\s*<dc:Bounds[^/]*height="([\d.]+)"/);
+    expect(boundsMatch).not.toBeNull();
+    expect(Number(boundsMatch[1])).toBeCloseTo(c.h, 1);
+    const svgLineMatches = c.lines.filter(line => r.svg.includes(`>${line}<`));
+    expect(svgLineMatches.length).toBe(c.lines.length);
   });
 });
 

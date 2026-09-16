@@ -5,7 +5,7 @@
 
 import { isEvent, isGateway, isBoundaryEvent, isArtifact } from './types.js';
 import { SHAPE, LANE_HEADER_W, LANE_PADDING, EXTERNAL_LABEL_H, POOL_GAP, MESSAGE_FLOW_FAN, ARTIFACT_GAP } from './constants.js';
-import { CFG } from '../shared/utils.js';
+import { CFG, wrapTextByPx } from '../shared/utils.js';
 import { identifyHappyPathNodes, resolveLaneId } from './topology.js';
 import { clipStraight } from '../shared/geometry.js';
 
@@ -724,6 +724,21 @@ function enforceOrthogonal(pts) {
  * top of the pool. Artifacts without any association go below the process,
  * left-aligned, in declaration order.
  */
+// textAnnotation is the one artifact type whose box must fit its text: a long,
+// unwrapped label overlaps whatever sits below/beside it (see CHANGELOG). Sizing
+// happens here, once, so DI (a pure coordMap passthrough) and svg.js (reads
+// `lines` back, never re-wraps) can't independently diverge — the "never compute
+// geometry in a renderer" rule this codebase already enforces elsewhere.
+function sizeArtifact(node) {
+  const base = SHAPE[node.type] || SHAPE._textAnnotation || { w: 100, h: 80 };
+  if (node.type !== 'textAnnotation') return base;
+  const maxW = base.maxTextWidthPx ?? base.w;
+  const lineH = base.lineHeightPx ?? 13;
+  const padding = base.linePaddingPx ?? 10;
+  const lines = wrapTextByPx(node.name || '', maxW, 11);
+  return { w: maxW, h: Math.max(base.h, lines.length * lineH + padding), lines };
+}
+
 function placeArtifacts(coords, allProcesses, lc) {
   const associations = lc.associations || [];
   const partnerOf = {};
@@ -740,7 +755,7 @@ function placeArtifacts(coords, allProcesses, lc) {
   for (const proc of allProcesses) {
     for (const node of flattenProcessNodes(proc.nodes)) {
       if (!isArtifact(node.type) || coords[node.id]) continue;
-      const sz = SHAPE[node.type] || SHAPE._textAnnotation || { w: 100, h: 80 };
+      const sz = sizeArtifact(node);
       const anchor = coords[partnerOf[node.id]];
       if (!anchor) { orphans.push({ node, sz }); continue; }
 
@@ -756,6 +771,7 @@ function placeArtifacts(coords, allProcesses, lc) {
         y: anchor.y + anchor.h + ARTIFACT_GAP + slot * (sz.h + ARTIFACT_GAP),
         w: sz.w,
         h: sz.h,
+        ...(sz.lines ? { lines: sz.lines } : {}),
       };
     }
   }
@@ -765,7 +781,7 @@ function placeArtifacts(coords, allProcesses, lc) {
   let x = placed.length ? Math.min(...placed.map(c => c.x)) : 0;
   const y = (placed.length ? Math.max(...placed.map(c => c.y + c.h)) : 0) + ARTIFACT_GAP;
   for (const { node, sz } of orphans) {
-    coords[node.id] = { x, y, w: sz.w, h: sz.h };
+    coords[node.id] = { x, y, w: sz.w, h: sz.h, ...(sz.lines ? { lines: sz.lines } : {}) };
     x += sz.w + ARTIFACT_GAP;
   }
 }

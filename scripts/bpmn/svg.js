@@ -542,9 +542,15 @@ function renderDataArtifact(node, c, tx, ty) {
     o.push(`<ellipse cx="${cx}" cy="${y+h-ry}" rx="${w/2}" ry="${ry}" fill="${fill}" stroke="${stroke}" stroke-width="${SW.dataObject}"/>`);
     o.push(renderExternalLabel(node.name || '', cx, ty(c.y + c.h) + 5, 70));
   } else if (type === 'textAnnotation') {
-    // Open bracket [ shape (OMG spec Fig 10.86)
+    // Open bracket [ shape (OMG spec Fig 10.86). Lines come from coordMap — computed
+    // once in coordinates.js's placeArtifacts, never re-wrapped here, so this box
+    // can't diverge from the DI bounds (which passthrough the same coordMap entry).
     o.push(`<path d="M ${x+15},${y} L ${x},${y} L ${x},${y+h} L ${x+15},${y+h}" fill="none" stroke="${stroke}" stroke-width="${SW.annotation}"/>`);
-    o.push(`<text x="${x+20}" y="${rn(y+h/2+4)}" font-size="11" fill="${CLR.label}">${esc(node.name || '')}</text>`);
+    const lines = c.lines ?? [node.name || ''];
+    const lineH = SHAPE.textAnnotation?.lineHeightPx ?? 13;
+    const startY = y + h / 2 - ((lines.length - 1) * lineH) / 2 + 4;
+    lines.forEach((line, i) =>
+      o.push(`<text x="${x+20}" y="${rn(startY + i * lineH)}" font-size="11" fill="${CLR.label}">${esc(line)}</text>`));
   } else if (type === 'group') {
     // Dashed rounded rectangle (OMG spec Fig 10.88)
     o.push(`<rect x="${x}" y="${y}" width="${w}" height="${h}" rx="10" ry="10" fill="none" stroke="${stroke}" stroke-width="1.5" stroke-dasharray="8,4,2,4"/>`);
