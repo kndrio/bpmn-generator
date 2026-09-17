@@ -911,6 +911,20 @@ function violatesVerbObject(name, locale) {
   return true;
 }
 
+// Diagnostic text per locale — kept separate from M01_LOCALES (which decides WHETHER a
+// name violates), since the message is a presentation concern, not a heuristic one. Same
+// fallback contract as violatesVerbObject: an absent/unknown locale gets the original
+// German message, unchanged, so the default (no-locale) path never needs its own test
+// updated by this table's existence.
+const M01_MESSAGES = {
+  de: (name) => `Task "${name}" folgt nicht der Objekt+Verb-Konvention (z.B. "Antrag prüfen"). Heuristik — exakte Wortartprüfung: M05/M06.`,
+  en: (name) => `Task "${name}" does not follow the Verb+Object convention (e.g. "Review Application"). Heuristic — exact part-of-speech check: M05/M06.`,
+  pt: (name) => `Task "${name}" não segue a convenção Verbo+Objeto (ex.: "Verificar cadastro"). Heurística — verificação exata de classe gramatical: M05/M06.`,
+};
+function m01Message(name, locale) {
+  return (M01_MESSAGES[locale] || M01_MESSAGES.de)(name);
+}
+
 const STYLE_RULES = [
   {
     id: 'M01', layer: 'style', defaultSeverity: 'WARNING',
@@ -924,7 +938,7 @@ const STYLE_RULES = [
       const msgs = [];
       for (const n of (proc.nodes || [])) {
         if (taskTypes.includes(n.type) && n.name && violatesVerbObject(n.name, locale))
-          msgs.push(`Task "${n.name}" folgt nicht der Objekt+Verb-Konvention (z.B. "Antrag prüfen"). Heuristik — exakte Wortartprüfung: M05/M06.`);
+          msgs.push(m01Message(n.name, locale));
       }
       return msgs.length === 0 ? { pass: true } : { pass: false, messages: msgs };
     }

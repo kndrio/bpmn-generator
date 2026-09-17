@@ -3135,7 +3135,7 @@ describe('Rule Engine — individual rules', () => {
         { id: 'f2', source: 't1', target: 'e' },
       ]);
       const result = runRules(lc, { locale: 'pt' });
-      expect(result.warnings.some(w => w.includes(name) && w.includes('Objekt+Verb'))).toBe(true);
+      expect(result.warnings.some(w => w.includes(name) && w.includes('Verbo+Objeto'))).toBe(true);
     }
   });
 
@@ -3152,7 +3152,7 @@ describe('Rule Engine — individual rules', () => {
       { id: 'f2', source: 't1', target: 'e' },
     ]);
     const result = runRules(lc, { locale: 'pt' });
-    expect(result.warnings.some(w => w.includes('Lugar de encontro') && w.includes('Objekt+Verb'))).toBe(true);
+    expect(result.warnings.some(w => w.includes('Lugar de encontro') && w.includes('Verbo+Objeto'))).toBe(true);
   });
 
   test('M01: explicit locale replaces, not adds to, the default union', () => {
@@ -3167,7 +3167,38 @@ describe('Rule Engine — individual rules', () => {
       { id: 'f2', source: 't1', target: 'e' },
     ]);
     const result = runRules(lc, { locale: 'pt' });
-    expect(result.warnings.some(w => w.includes('Antrag prüfen') && w.includes('Objekt+Verb'))).toBe(true);
+    const warning = result.warnings.find(w => w.includes('Antrag prüfen'));
+    expect(warning).toBeDefined();
+    // (b) positive: carries the Portuguese convention/example, not just any warning.
+    expect(warning).toContain('Verbo+Objeto');
+    expect(warning).toContain('Verificar cadastro');
+    // (a) negative: the German-locale text (convention name and example clause) must not
+    // leak into a locale:'pt' diagnostic — this is the defect this fix closes. Checking
+    // the full example clause, not just "Antrag prüfen", because the task's own name in
+    // this test coincidentally IS "Antrag prüfen" (testing the replace-not-add decision),
+    // so a bare substring check would spuriously fail on the task name itself.
+    expect(warning).not.toContain('Objekt+Verb');
+    expect(warning).not.toContain('z.B. "Antrag prüfen"');
+  });
+
+  test('M01: English-locale diagnostic uses Verb+Object terminology, not German', () => {
+    // Same defect, other locale: locale: 'en' must not leak the German convention name
+    // or example either. 'Cadastro' is a single-token name, invalid under every locale.
+    const lc = proc([
+      { id: 's', type: 'startEvent' },
+      { id: 't1', type: 'userTask', name: 'Cadastro' },
+      { id: 'e', type: 'endEvent' },
+    ], [
+      { id: 'f1', source: 's', target: 't1' },
+      { id: 'f2', source: 't1', target: 'e' },
+    ]);
+    const result = runRules(lc, { locale: 'en' });
+    const warning = result.warnings.find(w => w.includes('Cadastro'));
+    expect(warning).toBeDefined();
+    expect(warning).toContain('Verb+Object');
+    expect(warning).toContain('Review Application');
+    expect(warning).not.toContain('Objekt+Verb');
+    expect(warning).not.toContain('Antrag prüfen"');
   });
 
   test('M02: XOR gateway without question mark → WARNING', () => {
