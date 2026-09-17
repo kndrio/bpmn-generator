@@ -879,7 +879,8 @@ const M01_PORTUGUESE_VERBS = new Set([
   'criar', 'atualizar', 'excluir', 'arquivar', 'atribuir', 'confirmar', 'registrar',
   'emitir', 'encerrar', 'abrir', 'solicitar', 'encaminhar', 'escalar', 'assinar',
   'avaliar', 'calcular', 'gerar', 'publicar', 'cancelar', 'liberar', 'coletar',
-  'cadastrar', 'notificar',
+  'cadastrar', 'notificar', 'resolver', 'consultar', 'instruir', 'responder',
+  'informar', 'processar', 'analisar', 'decidir',
 ]);
 
 const M01_LOCALES = {

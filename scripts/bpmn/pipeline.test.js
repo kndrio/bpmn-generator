@@ -3124,6 +3124,34 @@ describe('Rule Engine — individual rules', () => {
     }
   });
 
+  test('M01: Portuguese verb-first names using resolver/consultar/instruir/responder/informar/processar/analisar/decidir (locale: pt) → no WARNING', () => {
+    // Real-world activity labels from an MP1 baseline flagged as M01 false positives
+    // because these 8 verbs were missing from the curated Portuguese verb Set.
+    for (const name of [
+      'Resolver divergências da criação',
+      'Consultar texto final da criação',
+      'Instruir processo completo',
+      'Responder informações complementares',
+      'Informar subscrição conjunta',
+      'Informar não participação',
+      'Informar ausência de anuência',
+      'Processar pedido recebido',
+      'Analisar pedido sumariamente',
+      'Decidir pedido',
+    ]) {
+      const lc = proc([
+        { id: 's', type: 'startEvent' },
+        { id: 't1', type: 'userTask', name },
+        { id: 'e', type: 'endEvent' },
+      ], [
+        { id: 'f1', source: 's', target: 't1' },
+        { id: 'f2', source: 't1', target: 'e' },
+      ]);
+      const result = runRules(lc, { locale: 'pt' });
+      expect(result.warnings.some(w => w.includes(name))).toBe(false);
+    }
+  });
+
   test('M01: Portuguese single-word / noun-only names (locale: pt) → WARNING', () => {
     for (const name of ['Cadastro', 'Documento de aprovação']) {
       const lc = proc([
